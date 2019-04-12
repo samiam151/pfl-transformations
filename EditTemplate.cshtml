@@ -1,0 +1,316 @@
+﻿@using System.Data;
+@using ProductFastLane.Controllers
+@model ProductFastLane.Models.TransformationsModel
+@{
+    ViewBag.Title = "Retailer Exports Template";
+    Layout = "~/Views/Shared/_LayoutExport.cshtml";
+    string TemplateName = (string)ViewData["TemplateName"];
+    int TemplateID = ViewData.ContainsKey("ID") ? (int)ViewData["ID"] : 666;
+
+    var clist = ExportController.GetCalculateColumnList(TemplateID).Select(x => x.Value);
+    var flist = ExportController.GetFindReplaceColumnList(TemplateID).Select(x => x.Value);
+    string error = ViewData.ContainsKey("error") ? (string)ViewData["error"] : String.Empty;
+
+    Dictionary<string, IEnumerable<string>> applicableFields = new Dictionary<string, IEnumerable<string>>
+    {
+        { "forFindReplace", flist },
+        { "forCalculate", clist}
+    };
+    @section scripts {
+        <script type="text/javascript" src="~/Scripts/pages/RetailerExport/utilities.js"></script>
+        <script type="text/javascript" src="~/Scripts/pages/retailerExport.js"></script>
+        <script type="text/javascript" src="~/Scripts/pages/RetailerExport/modals.js"></script>
+        <script type="text/javascript" src="~/Scripts/pages/RetailerExport/transformationModels.js"></script>
+        <script type="text/javascript" src="~/Scripts/pages/RetailerExport/transformerFunctions.js"></script>
+        <script type="text/javascript" src="~/Scripts/pages/RetailerExport/templateName.js"></script>
+        <script type="text/javascript">
+            $(document).ready(function () {
+                TemplateName.init();
+                new RetailerExportPage();
+            });
+        </script>
+    }
+}
+
+<p>@error</p>
+
+<script id="retailerExport--transformationData" type="application/json">
+    @Html.Raw(Json.Encode(Model.Transformations))
+</script>
+<script id="retailerExport--applicableFieldsData" type="application/json">
+    @Html.Raw(Json.Encode(applicableFields))
+</script>
+<div class="retailerExport" data-templateID="@TemplateID" @*data-transformationCount="@Model.Transformations.Count()"*@>
+    <a href="/Export/ExportTemplates" class="retailer__back"><i class="fa fa-chevron-left"></i>Back To Templates</a>
+
+    <div class="retailerExport__header">
+
+        <div class="retailerExport__header--templateName">
+            <h3>@TemplateName</h3>
+            <form action="/Export/SetTemplateName" method="post">
+                <input type="hidden" name="id" value="@TemplateID" />
+                <input type="text" name="newTemplateName" value="@TemplateName" />
+                <input type="hidden" name="returnView" value="EditTemplate" />
+                <input type="submit" class="blue-button" value="SUbmit" />
+            </form>
+            <span class="fa fa-pencil retailerExport__header--editName"></span>
+        </div>
+
+        <div class="retailerExport__actions">
+            <div class="retailerExport__actions--left">
+                <a href="/Export/ManageMapFields/@TemplateID">
+                    <img src="~/Content/Images/PFL_EditMapping.png" />Edit Mapping
+                </a>
+                <a href="#" data-toggle="modal" data-target="#findReplace">
+                    <img src="~/Content/Images/PFL_FindReplace.png" />Find/Replace
+                </a>
+                <a href="#" data-toggle="modal" data-target="#calculate">
+                    <img src="~/Content/Images/PFL_Calculate.png" />Calculate
+                </a>
+
+                <span>Show Transformations</span>
+                <div class="slider-container retailerExport--showTransformations">
+                    <label class="switch">
+                        <input type="checkbox" class="check" name="admin-active" checked>
+                        <div class="slider round">
+                            <p class="on">ON</p>
+                            <p class="off">OFF</p>
+                        </div>
+                    </label>
+                </div>
+
+            </div>
+            <div class="retailerExport__actions--right">
+                <a href="#" class="clear-button retailerExport__actions--cancel" data-toggle="modal" data-target="#cancel">Cancel</a>
+                <a href="#" class="blue-button retailerExport__actions--save">Save</a>
+            </div>
+        </div>
+
+        <div class="retailerExport--transformations">
+
+        </div>
+    </div>
+
+<div class="retailerExport__tableContainer">
+	@if (Model.Preview != null)
+	{
+		<table class="retailerExport__table table table-hover table-striped">
+			@*Head*@
+			<thead>
+			<tr>
+				@foreach (DataColumn c in Model.Preview.Columns)
+				{
+					<th data-name="@c.ColumnName">@c.ColumnName</th>
+				}
+			</tr>
+			</thead>
+
+			@*Body*@
+			<tbody>
+			@foreach (DataRow r in Model.Preview.Rows)
+			{
+				<tr>
+					@foreach (DataColumn c in Model.Preview.Columns)
+					{
+						Guid id = Guid.NewGuid();
+						if (c.DataType == typeof(bool))
+						{
+							<td data-id="@id" data-name="@c.ColumnName">@(r[c] != null && r[c] != DBNull.Value ? Convert.ToInt32(r[c]).ToString() : "0")</td>
+						}
+						else
+						{
+							<td data-id="@id" data-name="@c.ColumnName">@(r[c] != null && r[c] != DBNull.Value ? r[c].ToString() : "")</td>
+						}
+					}
+				</tr>
+			}
+			</tbody>
+		</table>
+	}
+</div>
+
+
+    @* Modals *@
+    <div class="modal fade transformationModal" id="findReplace" tabindex="-1" role="dialog" aria-labelledby="myModalLabel">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+
+                <div class="modal-body">
+                    <h3>Find and Replace</h3>
+                    <div class="modal--field">
+                        <label for="#replace--column">Column</label>
+                        <select id="replace--column" class="form-control tfm-columns">
+                            <option>Select a column...</option>
+                        </select>
+                    </div>
+
+                    <div class="modal--field">
+                        <label for="#replace--column">Find</label>
+                        <input type="text" id="replace--column" class="form-control tfm-find" />
+
+                        <div class="modal--buttons">
+                            <button class="blue-button replace--findNext">Find Next</button>
+                        </div>
+                    </div>
+
+                    <div class="modal--field">
+                        <label for="#replace--column">Change</label>
+                        <input type="text" id="replace--column" class="form-control tfm-replaceWith" />
+
+                        <div class="modal--buttons">
+                            <button class="blue-button replace--replace">Replace</button>
+                            <button class="blue-button replace--replaceAll">Replace All</button>
+                        </div>
+                    </div>
+
+                    <div class="resultsInfo">
+
+                    </div>
+
+                    <hr />
+
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+
+                    <div class="modal-bottomButtons">
+                        <button class="clear-button tfm-cancel">Cancel</button>
+                        <button class="blue-button tfm-save">Save</button>
+                    </div>
+                </div>
+
+
+
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade transformationModal" id="calculate" tabindex="-1" role="dialog" aria-labelledby="myModalLabel">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+
+
+                <div class="modal-body">
+                    <h3>Calculate</h3>
+
+                    <div class="modal--field">
+                        <label for="#calculate--column">Column</label>
+                        <select id="calculate--column" class="form-control tfm-columns">
+                            <option>Select a column...</option>
+                        </select>
+                    </div>
+
+                    <div class="modal--field">
+                        <label for="#calculate--column">Function</label>
+                        <select id="calculate--column" class="form-control tfm-calculateFunctions">
+                            <option value="Multiply">Multiply</option>
+                            <option value="Add">Add</option>
+                        </select>
+                    </div>
+
+                    <div class="modal--field">
+                        <label for="#calculate--column">By</label>
+
+                        <span data-toggle="tooltip" data-placement="top" title="To subtract, select ADD, then input a negative number. To divide, choose MULTIPLY.">
+                            <i class="fa fa-question-circle-o"></i>
+                        </span>
+
+                        <input type="text" id="calculate--column" class="form-control tfm-calculateBy" />
+
+                        <div class="modal--buttons">
+                            <button class="blue-button calculate--perform">Multiply</button>
+                        </div>
+                    </div>
+
+                    <div class="resultsInfo">
+
+                    </div>
+
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+
+                    <hr />
+
+                    <div class="modal-bottomButtons">
+                        <button class="clear-button tfm-cancel">Cancel</button>
+                        <button class="blue-button tfm-save">Save</button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="cancel" tabindex="-1" role="dialog" aria-labelledby="myModalLabel">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+
+
+                <div class="modal-body">
+                    <div class="retailerExport__confirm--content">
+                        Are you sure you want to cancel these changes?<br />
+                        They will not be saved.
+                    </div>
+
+                </div>
+
+                <div class="modal-footer">
+                    <div class="retailerExport__confirm--content">
+                        <button class="blue-button" class="retailerExport__confirm--yes" data-dismiss="modal">No</button>
+                        <a href="/Export/ExportTemplates" class="clear-button" class="retailerExport__confirm--no">Yes</a>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="ajaxSuccess" tabindex="-1" role="dialog" aria-labelledby="myModalLabel">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+
+                <div class="modal-body">
+                    <div class="retailerExport__confirm--content">
+                        Export transformation successfully saved!
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="ajaxFailure" tabindex="-1" role="dialog" aria-labelledby="myModalLabel">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+
+                <div class="modal-body">
+                    <div class="retailerExport__confirm--content">
+                        Error in saving transformations.
+                        <div class="ajaxFailure--content"></div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="saveWIthoutTransformations" tabindex="-1" role="dialog" aria-labelledby="myModalLabel">
+        <div class="modal-dialog" role="document">
+            <div class="modal-content">
+
+                <div class="modal-body">
+                    <div class="retailerExport__confirm--content">
+                        There are no transformations to save. Continue to your Templates page?
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <div class="retailerExport__confirm--content">
+                        <button class="blue-button" class="retailerExport__confirm--yes" data-dismiss="modal">No</button>
+                        <a href="/Export/ExportTemplates" class="clear-button" class="retailerExport__confirm--no">Yes</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+
